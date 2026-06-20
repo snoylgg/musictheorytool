@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Music Theory Tool</title>
+<title>Key Explorer — Music Theory Console</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 :root{
@@ -184,10 +184,8 @@ input[type=range]{touch-action:pan-x}
   .wrap{padding:14px 12px 48px}
   .bpm-display input{font-size:44px;width:108px}
   .timer-display{font-size:46px}
-  /* toolbar: let status drop to its own line */
   .fb-toolbar{flex-wrap:wrap}
   .fb-status{margin-left:0;width:100%;padding-top:4px}
-  /* tighten detail panel */
   .detail .d-body{padding:10px 12px;gap:6px}
   .tone{min-width:52px;padding:6px 8px}
   .tone .tn{font-size:13px}
@@ -195,121 +193,269 @@ input[type=range]{touch-action:pan-x}
 
 /* ── 480 px breakpoint (small phones) ── */
 @media(max-width:480px){
-  /* header stacks */
   header.app{flex-direction:column;align-items:flex-start;gap:8px;padding-bottom:10px}
   .brand .mark{font-size:18px}
   .theme-toggle{padding:6px 11px;font-size:11px}
-  /* tighten control rows */
   .ctl-row{padding:10px 12px;gap:8px}
   .ctl-label{min-width:38px;padding-top:7px;font-size:10px}
-  /* compact keys */
   .key{font-size:12px;padding:7px 8px;min-width:34px}
   .key.wide{min-width:80px;font-size:11.5px;padding:7px 8px}
   .key small{font-size:9px}
-  /* minikeys in toolbar */
   .minikey{font-size:10.5px;padding:5px 9px}
-  /* scale panel notes */
   .sp-note{padding:5px 7px;min-width:36px}
   .sp-note .n{font-size:13px}
-  /* chord chips */
   .chip{font-size:11px}
   .detail .d-head{padding:9px 12px}
   .detail .d-sym{font-size:16px}
-  /* tools row */
   .bpm-display input{font-size:38px;width:96px}
   .timer-display{font-size:40px}
   .stepbtn{width:34px;height:34px;font-size:17px}
 }
 
 *:focus-visible{outline:2px solid var(--scale); outline-offset:2px}
+
+/* ═══════════════════════════════════════════════
+   DRAG-TO-REORDER
+   ─────────────────────────────────────────────── */
+
+/* Override the original .section margin — spacing is
+   now owned by .draggable-section so the placeholder
+   can perfectly mirror the gap. */
+.section { margin-bottom: 0; }
+
+.draggable-section {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+/* ── Grip handle ── */
+.drag-handle {
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity .2s, color .15s, background .15s;
+  touch-action: none;
+  user-select: none;
+  margin-bottom: 4px;
+  border-radius: 6px;
+}
+/* Show handle on section hover */
+.draggable-section:hover .drag-handle { opacity: 1; }
+.drag-handle:hover { color: var(--ink-dim); background: var(--raise); }
+.drag-handle svg { pointer-events: none; display: block; }
+.drag-handle:active { cursor: grabbing; }
+
+/* Always slightly visible on touch devices */
+@media (max-width: 640px) {
+  .drag-handle { opacity: .35; height: 22px; }
+}
+
+/* ── Dragging state ── */
+.is-dragging { opacity: .93; }
+.is-dragging .panel {
+  box-shadow: 0 24px 52px rgba(0,0,0,.45),
+              0 6px 16px rgba(0,0,0,.25) !important;
+}
+[data-theme="light"] .is-dragging .panel {
+  box-shadow: 0 24px 52px rgba(40,48,66,.28),
+              0 6px 16px rgba(40,48,66,.16) !important;
+}
+
+/* ── Drop placeholder ── */
+.drop-placeholder {
+  border: 2px dashed var(--line2);
+  border-radius: 12px;
+  background: var(--raise);
+  opacity: .55;
+  margin-bottom: 16px;
+  /* height set dynamically by JS */
+}
+
+/* Keep divider margin sensible inside the tools wrapper */
+.draggable-section .divider { margin-top: 10px; }
+
+/* ═══════════════════════════════════════════════
+   TUNING BAR
+   ─────────────────────────────────────────────── */
+.tuning-bar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:9px 16px; border-bottom:1px solid var(--line);
+}
+.tuning-bar .tl{
+  font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted); white-space:nowrap; flex-shrink:0;
+}
+.tuning-presets{ display:flex; gap:5px; flex-wrap:wrap; flex:1 }
+.tuning-chip{
+  font-family:var(--mono); font-size:11px; color:var(--ink-dim);
+  background:var(--panel2); border:1px solid var(--line);
+  border-radius:7px; padding:5px 10px; cursor:pointer; white-space:nowrap;
+  transition:background .13s, border-color .13s, color .13s;
+}
+.tuning-chip:hover{ border-color:var(--line2); color:var(--ink) }
+.tuning-chip.sel{ background:var(--root); border-color:var(--root); color:var(--on-accent); font-weight:600 }
+
+/* Per-string note display (low → high, left → right) */
+.str-display{ display:flex; gap:3px; align-items:flex-start; flex-shrink:0 }
+.str-pip{ display:flex; flex-direction:column; align-items:center; gap:2px }
+.str-pip .sn{
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  min-width:26px; text-align:center; padding:3px 4px;
+  border-radius:5px; line-height:1.3;
+  background:var(--panel2); border:1px solid var(--line); color:var(--ink-dim);
+  transition:background .15s, border-color .15s, color .15s;
+}
+.str-pip .si{ font-family:var(--mono); font-size:9px; color:var(--muted); line-height:1 }
+/* Strings that differ from standard are highlighted */
+.str-pip.altered .sn{
+  color:var(--root); border-color:var(--root-soft); background:var(--root-soft);
+}
+[data-theme="light"] .str-pip.altered .sn{ background:var(--root-soft); color:var(--root) }
+
+@media(max-width:640px){ .tuning-bar{ padding:8px 12px; gap:8px } }
+/* On very small screens the string display is redundant — the fretboard labels show it */
+@media(max-width:480px){ .str-display{ display:none } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="app">
     <div class="brand">
-      <span class="mark">Theory<b>·</b>Practice</span>
-      <span class="tag">music theory tool</span>
+      <span class="mark">key<b>·</b>explorer</span>
+      <span class="tag">music theory console</span>
     </div>
     <button class="theme-toggle" id="themeToggle"><span class="dot"></span><span id="themeLabel">Dark</span></button>
   </header>
 
-  <section class="section panel">
-    <div class="ctl-row" style="flex-direction:column; gap:12px">
-      <div style="width:100%">
-        <p class="eyebrow">Root</p>
-        <div class="keys" id="roots"></div>
+  <!-- ═══ SORTABLE CONTAINER ═══════════════════════════════════════ -->
+  <div id="sectionsContainer">
+
+    <!-- ── 1. Key / Mode / Scale selector ── -->
+    <div class="draggable-section" data-sid="key-selector">
+      <div class="drag-handle" title="Drag to reorder">
+        <svg width="28" height="10" viewBox="0 0 28 10" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="2"  cy="2" r="1.6"/><circle cx="9"  cy="2" r="1.6"/>
+          <circle cx="16" cy="2" r="1.6"/><circle cx="23" cy="2" r="1.6"/>
+          <circle cx="2"  cy="8" r="1.6"/><circle cx="9"  cy="8" r="1.6"/>
+          <circle cx="16" cy="8" r="1.6"/><circle cx="23" cy="8" r="1.6"/>
+        </svg>
+      </div>
+      <section class="section panel">
+        <div class="ctl-row" style="flex-direction:column; gap:12px">
+          <div style="width:100%">
+            <p class="eyebrow">Root</p>
+            <div class="keys" id="roots"></div>
+          </div>
+        </div>
+        <div class="ctl-row" id="modeRow">
+          <span class="ctl-label">Mode</span>
+          <div class="keys" id="modes"></div>
+        </div>
+        <div class="ctl-row">
+          <span class="ctl-label">Scale</span>
+          <div class="keys" id="scaleTypes"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ── 2. Theory grid / Scale panel ── -->
+    <div class="draggable-section" data-sid="theory-grid">
+      <div class="drag-handle" title="Drag to reorder">
+        <svg width="28" height="10" viewBox="0 0 28 10" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="2"  cy="2" r="1.6"/><circle cx="9"  cy="2" r="1.6"/>
+          <circle cx="16" cy="2" r="1.6"/><circle cx="23" cy="2" r="1.6"/>
+          <circle cx="2"  cy="8" r="1.6"/><circle cx="9"  cy="8" r="1.6"/>
+          <circle cx="16" cy="8" r="1.6"/><circle cx="23" cy="8" r="1.6"/>
+        </svg>
+      </div>
+      <section class="section panel" id="gridPanel">
+        <div class="gridwrap"><table class="grid" id="theoryGrid"></table></div>
+        <div class="detail" id="chordDetail"></div>
+        <div class="scalepanel" id="scalePanel"></div>
+      </section>
+    </div>
+
+    <!-- ── 3. Fretboard ── -->
+    <div class="draggable-section" data-sid="fretboard">
+      <div class="drag-handle" title="Drag to reorder">
+        <svg width="28" height="10" viewBox="0 0 28 10" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="2"  cy="2" r="1.6"/><circle cx="9"  cy="2" r="1.6"/>
+          <circle cx="16" cy="2" r="1.6"/><circle cx="23" cy="2" r="1.6"/>
+          <circle cx="2"  cy="8" r="1.6"/><circle cx="9"  cy="8" r="1.6"/>
+          <circle cx="16" cy="8" r="1.6"/><circle cx="23" cy="8" r="1.6"/>
+        </svg>
+      </div>
+      <section class="section panel">
+        <div class="fb-toolbar">
+          <div class="tb-group">
+            <span class="gl">Labels</span>
+            <button class="minikey sel" data-fl="names">Note Names</button>
+            <button class="minikey" data-fl="intervals">Intervals</button>
+            <button class="minikey" data-fl="degrees">Degrees</button>
+          </div>
+          <div class="tb-group">
+            <span class="gl">Sound</span>
+            <button class="minikey sel" data-inst="synth">Synth</button>
+            <button class="minikey" data-inst="piano">Piano</button>
+          </div>
+          <div class="fb-status">
+            <span class="loadbar" id="loadbar"><span class="spin"></span>loading piano…</span>
+            <span class="audio-hint" id="audioHint"><span class="pulse"></span>Click a chord to enable audio</span>
+            <span id="fbChordLabel"></span>
+          </div>
+        </div>
+        <div id="tuningBar" class="tuning-bar"></div>
+        <div class="fb-scroll"><div id="fretboard"></div></div>
+      </section>
+    </div>
+
+    <!-- ── 4. Tools (metronome + timer) ── -->
+    <div class="draggable-section" data-sid="tools">
+      <div class="drag-handle" title="Drag to reorder">
+        <svg width="28" height="10" viewBox="0 0 28 10" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="2"  cy="2" r="1.6"/><circle cx="9"  cy="2" r="1.6"/>
+          <circle cx="16" cy="2" r="1.6"/><circle cx="23" cy="2" r="1.6"/>
+          <circle cx="2"  cy="8" r="1.6"/><circle cx="9"  cy="8" r="1.6"/>
+          <circle cx="16" cy="8" r="1.6"/><circle cx="23" cy="8" r="1.6"/>
+        </svg>
+      </div>
+      <div class="divider"><span>Tools</span></div>
+      <div class="tools">
+        <section class="panel tool">
+          <h3>Metronome</h3>
+          <div class="bpm-display"><input id="bpmInput" type="text" inputmode="numeric" value="120"><span class="unit">BPM</span></div>
+          <div class="bpm-ctrls">
+            <button class="stepbtn" id="bpmDown">−</button>
+            <input class="bpm-slider" id="bpmSlider" type="range" min="20" max="300" step="1" value="120">
+            <button class="stepbtn" id="bpmUp">+</button>
+          </div>
+          <div class="m-row" id="timeSig"></div>
+          <div class="beat-dots" id="beatDots"></div>
+          <div class="m-row"><button class="tapbtn" id="tapBtn">Tap Tempo</button></div>
+          <button class="bigbtn" id="metroToggle">Start</button>
+        </section>
+
+        <section class="panel tool">
+          <h3>Timer</h3>
+          <div class="timer-mode">
+            <button class="minikey sel" data-tmode="up" style="flex:1;text-align:center">Count Up</button>
+            <button class="minikey" data-tmode="down" style="flex:1;text-align:center">Countdown</button>
+          </div>
+          <div class="timer-display" id="timerDisplay"></div>
+          <div class="timer-ctrls">
+            <button class="bigbtn" id="timerToggle">Start</button>
+            <button class="bigbtn" id="timerReset" style="flex:.7">Reset</button>
+          </div>
+        </section>
       </div>
     </div>
-    <div class="ctl-row" id="modeRow">
-      <span class="ctl-label">Mode</span>
-      <div class="keys" id="modes"></div>
-    </div>
-    <div class="ctl-row">
-      <span class="ctl-label">Scale</span>
-      <div class="keys" id="scaleTypes"></div>
-    </div>
-  </section>
 
-  <section class="section panel" id="gridPanel">
-    <div class="gridwrap"><table class="grid" id="theoryGrid"></table></div>
-    <div class="detail" id="chordDetail"></div>
-    <div class="scalepanel" id="scalePanel"></div>
-  </section>
-
-  <section class="section panel">
-    <div class="fb-toolbar">
-      <div class="tb-group">
-        <span class="gl">Labels</span>
-        <button class="minikey sel" data-fl="names">Note Names</button>
-        <button class="minikey" data-fl="intervals">Intervals</button>
-        <button class="minikey" data-fl="degrees">Degrees</button>
-      </div>
-      <div class="tb-group">
-        <span class="gl">Sound</span>
-        <button class="minikey sel" data-inst="synth">Synth</button>
-        <button class="minikey" data-inst="piano">Piano</button>
-      </div>
-      <div class="fb-status">
-        <span class="loadbar" id="loadbar"><span class="spin"></span>loading piano…</span>
-        <span class="audio-hint" id="audioHint"><span class="pulse"></span>Click a chord to enable audio</span>
-        <span id="fbChordLabel"></span>
-      </div>
-    </div>
-    <div class="fb-scroll"><div id="fretboard"></div></div>
-  </section>
-
-  <div class="divider"><span>Tools</span></div>
-
-  <div class="tools">
-    <section class="panel tool">
-      <h3>Metronome</h3>
-      <div class="bpm-display"><input id="bpmInput" type="text" inputmode="numeric" value="120"><span class="unit">BPM</span></div>
-      <div class="bpm-ctrls">
-        <button class="stepbtn" id="bpmDown">−</button>
-        <input class="bpm-slider" id="bpmSlider" type="range" min="20" max="300" step="1" value="120">
-        <button class="stepbtn" id="bpmUp">+</button>
-      </div>
-      <div class="m-row" id="timeSig"></div>
-      <div class="beat-dots" id="beatDots"></div>
-      <div class="m-row"><button class="tapbtn" id="tapBtn">Tap Tempo</button></div>
-      <button class="bigbtn" id="metroToggle">Start</button>
-    </section>
-
-    <section class="panel tool">
-      <h3>Timer</h3>
-      <div class="timer-mode">
-        <button class="minikey sel" data-tmode="up" style="flex:1;text-align:center">Count Up</button>
-        <button class="minikey" data-tmode="down" style="flex:1;text-align:center">Countdown</button>
-      </div>
-      <div class="timer-display" id="timerDisplay"></div>
-      <div class="timer-ctrls">
-        <button class="bigbtn" id="timerToggle">Start</button>
-        <button class="bigbtn" id="timerReset" style="flex:.7">Reset</button>
-      </div>
-    </section>
-  </div>
-</div>
+  </div><!-- /#sectionsContainer -->
+</div><!-- /.wrap -->
 
 <script>
 /* ============ MUSIC THEORY ENGINE (verified by test suite) ============ */
@@ -437,6 +583,7 @@ function bluesScale(pc){
 }
 const harmonicMinor=pc=>spellScaleByLetters(pc,[0,2,3,5,7,8,11]);
 const melodicMinor=pc=>spellScaleByLetters(pc,[0,2,3,5,7,9,11]);
+
 /* ============ APP STATE ============ */
 const ROOTS=[
   {pc:0,label:'C'},{pc:1,label:'C♯/D♭',enh:1},{pc:2,label:'D'},{pc:3,label:'D♯/E♭',enh:1},
@@ -454,7 +601,7 @@ const GRID_ROWS=[
   {key:'sus4',label:'sus4',chord:true},{key:'sus2',label:'sus2',chord:true},{key:'sixth',label:'6th',chord:true}
 ];
 const state={rootPC:0,mode:'ionian',scaleType:'diatonic',theme:'dark',fretLabel:'names',instrument:'synth',
-  activeChord:null,activeChordData:null,clickState:1};
+  activeChord:null,activeChordData:null,clickState:1,tuningId:'standard'};
 
 function currentScale(){
   switch(state.scaleType){
@@ -582,6 +729,7 @@ function renderScalePanel(){
     ivals+='<div class="sp-note"><div class="n" style="font-size:12px">'+iv.name+'</div></div>'; });
   p.innerHTML='<h2>'+title+'</h2><div class="sp-grid"><span class="lab">Notes</span><div class="sp-notes">'+notes+'</div><span class="lab">Intervals</span><div class="sp-notes">'+ivals+'</div></div><div class="sp-rel">'+rel+'</div>';
 }
+
 /* ============ CHORD INTERACTION ============ */
 function clearChord(){ state.activeChord=null; state.activeChordData=null; state.clickState=1; document.getElementById('fbChordLabel').textContent=''; }
 function onChordClick(degIdx,rowKey){
@@ -596,9 +744,55 @@ function onChordClick(degIdx,rowKey){
 }
 
 /* ============ FRETBOARD ============ */
-const TUNING=[{name:'E',pc:4},{name:'A',pc:9},{name:'D',pc:2},{name:'G',pc:7},{name:'B',pc:11},{name:'E',pc:4}];
+/* Each preset: index 0 = string 6 (low/thick), index 5 = string 1 (high/thin) */
+const TUNINGS=[
+  {id:'standard', label:'Standard',  notes:['E','A','D','G','B','E'],          pcs:[4,9,2,7,11,4]  },
+  {id:'dropD',    label:'Drop D',    notes:['D','A','D','G','B','E'],          pcs:[2,9,2,7,11,4]  },
+  {id:'halfDown', label:'½ Step ↓', notes:['E♭','A♭','D♭','G♭','B♭','E♭'],  pcs:[3,8,1,6,10,3]  },
+  {id:'fullDown', label:'1 Step ↓', notes:['D','G','C','F','A','D'],           pcs:[2,7,0,5,9,2]   },
+  {id:'dropC',    label:'Drop C',    notes:['C','G','C','F','A','D'],          pcs:[0,7,0,5,9,2]   },
+  {id:'openG',    label:'Open G',    notes:['D','G','D','G','B','D'],          pcs:[2,7,2,7,11,2]  },
+  {id:'openD',    label:'Open D',    notes:['D','A','D','F♯','A','D'],         pcs:[2,9,2,6,9,2]   },
+  {id:'openE',    label:'Open E',    notes:['E','B','E','G♯','B','E'],         pcs:[4,11,4,8,11,4] },
+  {id:'dadgad',   label:'DADGAD',    notes:['D','A','D','G','A','D'],          pcs:[2,9,2,7,9,2]   },
+];
+const STD_PCS=[4,9,2,7,11,4]; // standard E A D G B E, used to flag altered strings
+
+function currentTuning(){
+  const t=TUNINGS.find(t=>t.id===state.tuningId)||TUNINGS[0];
+  return t.pcs.map((pc,i)=>({name:t.notes[i],pc}));
+}
+
+function renderTuningBar(){
+  const bar=document.getElementById('tuningBar');
+  if(!bar)return;
+  const active=TUNINGS.find(t=>t.id===state.tuningId)||TUNINGS[0];
+
+  // Preset buttons
+  let html='<span class="tl">Tuning</span><div class="tuning-presets">';
+  TUNINGS.forEach(t=>{
+    html+='<button class="tuning-chip'+(t.id===state.tuningId?' sel':'')+'" data-tid="'+t.id+'">'+t.label+'</button>';
+  });
+  html+='</div>';
+
+  // Per-string display: string 6 (low, index 0) → string 1 (high, index 5) left→right
+  html+='<div class="str-display">';
+  const strNums=['6','5','4','3','2','1'];
+  active.pcs.forEach((pc,i)=>{
+    const altered=pc!==STD_PCS[i];
+    html+='<div class="str-pip'+(altered?' altered':'')+'"><div class="sn">'+active.notes[i]+'</div><div class="si">'+strNums[i]+'</div></div>';
+  });
+  html+='</div>';
+
+  bar.innerHTML=html;
+  bar.querySelectorAll('[data-tid]').forEach(btn=>{
+    btn.onclick=()=>{ state.tuningId=btn.dataset.tid; renderTuningBar(); renderFretboard(); };
+  });
+}
+
 const SINGLE_DOTS=[3,5,7,9,15,17,19,21], DOUBLE_DOTS=[12,24];
 function renderFretboard(){
+  const tuning=currentTuning();
   const FRET_W=35,OPEN_W=42,ROW_H=27,PAD_TOP=20,PAD_BOT=24,nStr=6;
   const FRETS = window.innerWidth < 540 ? 12 : 24;
   const boardW=OPEN_W+FRET_W*FRETS, W=boardW+8, H=PAD_TOP+ROW_H*(nStr-1)+PAD_BOT;
@@ -621,11 +815,11 @@ function renderFretboard(){
   svg+='<line class="nut" x1="'+nutX+'" y1="'+(stringY(nStr-1)-2)+'" x2="'+nutX+'" y2="'+(stringY(0)+2)+'" stroke-width="3"/>';
   for(let i=0;i<nStr;i++){ const y=stringY(i);
     svg+='<line class="string-line" x1="'+nutX+'" y1="'+y+'" x2="'+fretX(FRETS)+'" y2="'+y+'" stroke-width="'+(1+i*0.18)+'"/>';
-    svg+='<text class="open-lbl" x="'+(OPEN_W/2)+'" y="'+y+'" text-anchor="middle" dominant-baseline="central">'+TUNING[i].name+'</text>';
+    svg+='<text class="open-lbl" x="'+(OPEN_W/2)+'" y="'+y+'" text-anchor="middle" dominant-baseline="central">'+tuning[i].name+'</text>';
   }
   [3,5,7,9,12,15,17,19,21,24].forEach(f=>{ svg+='<text class="fret-num" x="'+noteX(f)+'" y="'+(H-9)+'" text-anchor="middle">'+f+'</text>'; });
   for(let i=0;i<nStr;i++){
-    const openPC=TUNING[i].pc, y=stringY(i);
+    const openPC=tuning[i].pc, y=stringY(i);
     for(let f=0;f<=FRETS;f++){
       const pc=(openPC+f)%12; let show=false,isRoot=false,label='';
       if(chordView){
@@ -691,6 +885,7 @@ function setInstrument(which,silent){
   document.querySelectorAll('[data-inst]').forEach(b=>b.classList.toggle('sel',b.dataset.inst===which));
   if(which==='piano'&&!sampler&&!pianoFailed){ ensureAudio(); buildPiano(); }
 }
+
 /* ============ METRONOME (Web Audio lookahead) ============ */
 const Metro=(()=>{
   let ac=null,running=false,bpm=120,beatsPerBar=4,sig='4/4',nextNoteTime=0,current=0,timerID=null;
@@ -736,7 +931,6 @@ function setBpm(v,fromSlider){
   document.getElementById('bpmInput').value=v;
   document.getElementById('bpmSlider').value=v;
 }
-// tap tempo
 let taps=[];
 function tap(){
   const now=performance.now();
@@ -769,7 +963,7 @@ const Timer=(()=>{
     if(mode==='up') ms = running ? baseMs+(performance.now()-startStamp) : baseMs;
     else ms = running ? targetMs-(performance.now()-startStamp) : baseMs;
     if(mode==='down'){
-      if(!running){ // editable input
+      if(!running){
         disp.innerHTML='<input id="tmM" maxlength="2" value="'+fmt(baseMs).slice(0,2)+'">:<input id="tmS" maxlength="2" value="'+fmt(baseMs).slice(3)+'">';
         wireTimerInputs(); return;
       }
@@ -797,7 +991,7 @@ const Timer=(()=>{
     setMode(m){ this.stop(); mode=m; baseMs = (m==='down')?lastSet:0;
       document.querySelectorAll('[data-tmode]').forEach(b=>b.classList.toggle('sel',b.dataset.tmode===m)); render(); },
     toggle(){
-      if(running){ // pause
+      if(running){
         if(mode==='up') baseMs+= performance.now()-startStamp;
         else baseMs = targetMs-(performance.now()-startStamp);
         running=false; if(raf)cancelAnimationFrame(raf); setStartBtn(false); render();
@@ -811,6 +1005,145 @@ const Timer=(()=>{
     render
   };
 })();
+
+/* ============ DRAG-TO-REORDER SECTIONS ============ */
+function makeSortable(container) {
+  let dragging    = null;   // the .draggable-section being moved
+  let placeholder = null;   // ghost element that holds the space
+  let pointerOffsetY = 0;   // distance from pointer to section top at drag-start
+  let activeHandle = null;  // which handle initiated the drag
+
+  // Attach to every handle currently in the container
+  container.querySelectorAll('.drag-handle').forEach(attachHandle);
+
+  function attachHandle(handle) {
+    handle.style.touchAction = 'none'; // prevent scroll-hijack on touch
+    handle.addEventListener('pointerdown', onDown);
+  }
+
+  function onDown(e) {
+    // Only primary pointer (left-click / first finger)
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+
+    activeHandle = e.currentTarget;
+    const section = activeHandle.closest('.draggable-section');
+    if (!section) return;
+
+    // Capture the pointer so we keep receiving events even if cursor leaves the handle
+    try { activeHandle.setPointerCapture(e.pointerId); } catch(_) {}
+
+    const rect = section.getBoundingClientRect();
+    pointerOffsetY = e.clientY - rect.top;
+
+    // ── Placeholder ──────────────────────────────────────────
+    placeholder = document.createElement('div');
+    placeholder.className = 'drop-placeholder';
+    placeholder.style.height = rect.height + 'px';
+    section.parentNode.insertBefore(placeholder, section);
+
+    // ── Lift the section ─────────────────────────────────────
+    dragging = section;
+    dragging._savedStyle = dragging.getAttribute('style') || '';
+    dragging.style.cssText = [
+      'position:fixed',
+      'top:'   + rect.top   + 'px',
+      'left:'  + rect.left  + 'px',
+      'width:' + rect.width + 'px',
+      'z-index:9999',
+      'margin:0',
+      'pointer-events:none',
+      'transition:box-shadow .15s'
+    ].join(';');
+    dragging.classList.add('is-dragging');
+
+    activeHandle.addEventListener('pointermove',   onMove);
+    activeHandle.addEventListener('pointerup',     onUp);
+    activeHandle.addEventListener('pointercancel', onUp);
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+
+    // Follow the pointer
+    dragging.style.top = (e.clientY - pointerOffsetY) + 'px';
+
+    // Decide where the placeholder should live
+    const midY    = e.clientY;
+    const siblings = [...container.querySelectorAll('.draggable-section:not(.is-dragging)')];
+    let insertBefore = null;
+
+    for (const s of siblings) {
+      const r = s.getBoundingClientRect();
+      if (midY < r.top + r.height / 2) { insertBefore = s; break; }
+    }
+
+    if (insertBefore) container.insertBefore(placeholder, insertBefore);
+    else              container.appendChild(placeholder);
+
+    // ── Auto-scroll near viewport edges ──────────────────────
+    const ZONE = 80, SPEED = 6;
+    if      (e.clientY < ZONE)                        window.scrollBy(0, -SPEED);
+    else if (e.clientY > window.innerHeight - ZONE)   window.scrollBy(0,  SPEED);
+  }
+
+  function onUp(e) {
+    if (!dragging) return;
+
+    // Restore original styles and drop into the placeholder's position
+    dragging.style.cssText = dragging._savedStyle;
+    dragging.classList.remove('is-dragging');
+    container.insertBefore(dragging, placeholder);
+    placeholder.remove();
+    placeholder = null;
+
+    activeHandle.removeEventListener('pointermove',   onMove);
+    activeHandle.removeEventListener('pointerup',     onUp);
+    activeHandle.removeEventListener('pointercancel', onUp);
+
+    dragging     = null;
+    activeHandle = null;
+
+    saveSectionOrder();
+  }
+
+  // Allow Escape to cancel a drag in progress
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !dragging) return;
+    dragging.style.cssText = dragging._savedStyle;
+    dragging.classList.remove('is-dragging');
+    // Put section back before placeholder (= its original position)
+    container.insertBefore(dragging, placeholder);
+    placeholder.remove();
+    placeholder = null;
+    if (activeHandle) {
+      activeHandle.removeEventListener('pointermove',   onMove);
+      activeHandle.removeEventListener('pointerup',     onUp);
+      activeHandle.removeEventListener('pointercancel', onUp);
+    }
+    dragging = activeHandle = null;
+  });
+}
+
+/* Persist order in localStorage so each browser/user keeps their layout */
+function saveSectionOrder() {
+  const order = [...document.querySelectorAll('#sectionsContainer .draggable-section')]
+    .map(s => s.dataset.sid);
+  try { localStorage.setItem('ke-section-order', JSON.stringify(order)); } catch(_) {}
+}
+
+function loadSectionOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ke-section-order') || 'null');
+    if (!Array.isArray(saved) || !saved.length) return;
+    const container = document.getElementById('sectionsContainer');
+    // Append in saved order — any missing sid is simply left where it is
+    saved.forEach(sid => {
+      const el = container.querySelector('[data-sid="' + sid + '"]');
+      if (el) container.appendChild(el);
+    });
+  } catch(_) {}
+}
 
 /* ============ INIT + WIRING ============ */
 function renderAll(){ renderRoots(); renderModes(); renderScaleTypes(); renderGridOrScale(); renderFretboard(); }
@@ -860,9 +1193,13 @@ document.getElementById('timerToggle').onclick=()=> Timer.toggle();
 document.getElementById('timerReset').onclick=()=> Timer.reset();
 Timer.setMode('up');
 
+// ── Boot ──────────────────────────────────────────────────────
 renderAll();
+renderTuningBar();    // populate tuning selector
+loadSectionOrder();   // restore user's saved layout
+makeSortable(document.getElementById('sectionsContainer'));
 
-// Re-render fretboard on resize/orientation change (mobile)
+// Re-render fretboard on resize/orientation change
 let _resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);

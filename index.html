@@ -399,11 +399,17 @@ input[type=range]{touch-action:pan-x}
           </div>
           <div class="tb-group">
             <span class="gl">Sound</span>
-            <button class="minikey sel" data-inst="synth">Synth</button>
-            <button class="minikey" data-inst="piano">Piano</button>
+            <button class="minikey" data-inst="synth">Synth</button>
+            <button class="minikey" data-inst="organ">Organ</button>
+            <button class="minikey" data-inst="bells">Bells</button>
+            <button class="minikey sel" data-inst="piano">Piano</button>
+            <button class="minikey" data-inst="nylon">Nylon</button>
+            <button class="minikey" data-inst="steel">Steel</button>
+            <button class="minikey" data-inst="eguitar">E.Guitar</button>
+            <button class="minikey" data-inst="bass">Bass</button>
           </div>
           <div class="fb-status">
-            <span class="loadbar" id="loadbar"><span class="spin"></span>loading piano…</span>
+            <span class="loadbar" id="loadbar"><span class="spin"></span><span id="loadbarText">loading…</span></span>
             <span class="audio-hint" id="audioHint"><span class="pulse"></span>Click a chord to enable audio</span>
             <span id="fbChordLabel"></span>
           </div>
@@ -600,7 +606,7 @@ const GRID_ROWS=[
   {key:'add9',label:'add9',chord:true},{key:'ninth',label:'9th',chord:true},
   {key:'sus4',label:'sus4',chord:true},{key:'sus2',label:'sus2',chord:true},{key:'sixth',label:'6th',chord:true}
 ];
-const state={rootPC:0,mode:'ionian',scaleType:'diatonic',theme:'dark',fretLabel:'names',instrument:'synth',
+const state={rootPC:0,mode:'ionian',scaleType:'diatonic',theme:'dark',fretLabel:'names',instrument:'piano',
   activeChord:null,activeChordData:null,clickState:1,tuningId:'standard'};
 
 function currentScale(){
@@ -845,45 +851,121 @@ document.addEventListener('click',e=>{
 });
 
 /* ============ AUDIO (Tone.js) ============ */
-let audioStarted=false,synth=null,sampler=null,pianoReady=false,pianoFailed=false;
+
+// ── Synth voices (built immediately on first interaction) ──────────
+let audioStarted=false;
+let synth=null, organSynth=null, bellsSynth=null;
+
 function buildSynth(){
-  synth=new Tone.PolySynth(Tone.Synth,{oscillator:{type:'triangle'},envelope:{attack:0.02,decay:0.1,sustain:0.6,release:1.5}});
+  synth=new Tone.PolySynth(Tone.Synth,{
+    oscillator:{type:'triangle'},
+    envelope:{attack:0.02,decay:0.1,sustain:0.6,release:1.5}
+  });
   synth.volume.value=-8; synth.toDestination();
 }
-function buildPiano(){
-  const base='https://gleitz.github.io/midi-js-soundfonts/MusyngKite/acoustic_grand_piano-mp3/';
-  const urls={'A0':'A0.mp3','C1':'C1.mp3','D#1':'Eb1.mp3','F#1':'Gb1.mp3',
-    'A1':'A1.mp3','C2':'C2.mp3','D#2':'Eb2.mp3','F#2':'Gb2.mp3',
-    'A2':'A2.mp3','C3':'C3.mp3','D#3':'Eb3.mp3','F#3':'Gb3.mp3',
-    'A3':'A3.mp3','C4':'C4.mp3','D#4':'Eb4.mp3','F#4':'Gb4.mp3',
-    'A4':'A4.mp3','C5':'C5.mp3','D#5':'Eb5.mp3','F#5':'Gb5.mp3',
-    'A5':'A5.mp3','C6':'C6.mp3','D#6':'Eb6.mp3','F#6':'Gb6.mp3','A6':'A6.mp3','C7':'C7.mp3'};
-  const loadbar=document.getElementById('loadbar'); loadbar.classList.add('show');
-  let settled=false;
-  const finish=ok=>{ if(settled)return; settled=true; loadbar.classList.remove('show');
-    if(ok){pianoReady=true;} else {pianoFailed=true; setInstrument('synth',true);} };
-  try{
-    sampler=new Tone.Sampler({urls,baseUrl:base,release:1.2,onload:()=>finish(true),onerror:()=>finish(false)});
-    sampler.volume.value=6; sampler.toDestination();
-  }catch(e){ finish(false); }
-  setTimeout(()=>{ if(!settled) finish(false); },12000);
+
+function buildOrgan(){
+  // Square wave with 4 partials + instant release = Hammond-ish
+  organSynth=new Tone.PolySynth(Tone.Synth,{
+    oscillator:{type:'square4'},
+    envelope:{attack:0.01,decay:0,sustain:1,release:0.08}
+  });
+  organSynth.volume.value=-11; organSynth.toDestination();
 }
+
+function buildBells(){
+  // Sine with fast decay, no sustain = music-box/vibraphone feel
+  bellsSynth=new Tone.PolySynth(Tone.Synth,{
+    oscillator:{type:'sine'},
+    envelope:{attack:0.001,decay:1.4,sustain:0,release:1.8}
+  });
+  bellsSynth.volume.value=-6; bellsSynth.toDestination();
+}
+
+// ── Sampled instruments (lazy-loaded on first selection) ───────────
+const samplers={};       // id → Tone.Sampler
+const samplerStatus={};  // id → 'loading' | 'ready' | 'failed'
+let loadingCount=0;
+
+// All CDN instruments share the same note-URL map
+const SAMPLER_URLS={
+  'A0':'A0.mp3','C1':'C1.mp3','D#1':'Eb1.mp3','F#1':'Gb1.mp3',
+  'A1':'A1.mp3','C2':'C2.mp3','D#2':'Eb2.mp3','F#2':'Gb2.mp3',
+  'A2':'A2.mp3','C3':'C3.mp3','D#3':'Eb3.mp3','F#3':'Gb3.mp3',
+  'A3':'A3.mp3','C4':'C4.mp3','D#4':'Eb4.mp3','F#4':'Gb4.mp3',
+  'A4':'A4.mp3','C5':'C5.mp3','D#5':'Eb5.mp3','F#5':'Gb5.mp3',
+  'A5':'A5.mp3','C6':'C6.mp3','D#6':'Eb6.mp3','F#6':'Gb6.mp3',
+  'A6':'A6.mp3','C7':'C7.mp3'
+};
+
+// Per-instrument CDN config
+const SAMPLER_CFG={
+  piano:  {folder:'acoustic_grand_piano',  vol:6,  release:1.2},
+  nylon:  {folder:'acoustic_guitar_nylon', vol:5,  release:2.0},
+  steel:  {folder:'acoustic_guitar_steel', vol:4,  release:1.8},
+  eguitar:{folder:'electric_guitar_clean', vol:3,  release:1.5},
+  bass:   {folder:'electric_bass_finger',  vol:8,  release:1.0},
+};
+
+function showLoad(name){
+  loadingCount++;
+  document.getElementById('loadbarText').textContent='loading '+name+'…';
+  document.getElementById('loadbar').classList.add('show');
+}
+function hideLoad(){
+  loadingCount=Math.max(0,loadingCount-1);
+  if(!loadingCount) document.getElementById('loadbar').classList.remove('show');
+}
+
+function buildSampler(id){
+  if(samplerStatus[id]==='loading'||samplerStatus[id]==='ready') return;
+  samplerStatus[id]='loading';
+  const cfg=SAMPLER_CFG[id];
+  const base='https://gleitz.github.io/midi-js-soundfonts/MusyngKite/'+cfg.folder+'-mp3/';
+  showLoad(id);
+  let settled=false;
+  const finish=ok=>{
+    if(settled)return; settled=true; hideLoad();
+    if(ok){ samplerStatus[id]='ready'; }
+    else { samplerStatus[id]='failed'; if(state.instrument===id) setInstrument('synth',true); }
+  };
+  try{
+    samplers[id]=new Tone.Sampler({urls:SAMPLER_URLS,baseUrl:base,release:cfg.release,
+      onload:()=>finish(true), onerror:()=>finish(false)});
+    samplers[id].volume.value=cfg.vol; samplers[id].toDestination();
+  }catch(e){ finish(false); }
+  setTimeout(()=>{ if(!settled) finish(false); },14000);
+}
+
 function ensureAudio(){
   if(audioStarted)return; audioStarted=true;
-  Tone.start().catch(()=>{}); buildSynth();
+  Tone.start().catch(()=>{});
+  buildSynth(); buildOrgan(); buildBells();
   const h=document.getElementById('audioHint'); h.classList.add('ready'); h.innerHTML='<span class="pulse"></span>Audio enabled';
+  // Kick off the default sampled instrument immediately
+  if(SAMPLER_CFG[state.instrument]) buildSampler(state.instrument);
 }
-function activeInstrument(){ return (state.instrument==='piano'&&pianoReady&&!pianoFailed)?sampler:synth; }
+
+function activeInstrument(){
+  const id=state.instrument;
+  if(id==='organ'  && organSynth)                           return organSynth;
+  if(id==='bells'  && bellsSynth)                           return bellsSynth;
+  if(SAMPLER_CFG[id] && samplerStatus[id]==='ready')        return samplers[id];
+  return synth; // always available after ensureAudio
+}
+
 function playChord(voiced,arp){
   if(!synth)return;
   const inst=activeInstrument(), notes=voiced.map(v=>Tone.Frequency(v.midi,'midi').toNote()), now=Tone.now()+0.02;
   if(arp){ notes.forEach((n,i)=> inst.triggerAttackRelease(n,'4n',now+i*0.22)); }
   else { inst.triggerAttackRelease(notes,'2n',now); }
 }
+
 function setInstrument(which,silent){
   state.instrument=which;
   document.querySelectorAll('[data-inst]').forEach(b=>b.classList.toggle('sel',b.dataset.inst===which));
-  if(which==='piano'&&!sampler&&!pianoFailed){ ensureAudio(); buildPiano(); }
+  // Lazy-load sampled instruments on first selection
+  if(SAMPLER_CFG[which] && samplerStatus[which]===undefined){ ensureAudio(); buildSampler(which); }
 }
 
 /* ============ METRONOME (Web Audio lookahead) ============ */
